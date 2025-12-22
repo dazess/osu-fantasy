@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Button from './ui/Button';
 
-// Send cookies with requests (HttpOnly cookies for tokens)
+// Configure axios to send cookies with requests
 axios.defaults.withCredentials = true;
-
 
 // 配置后端 API 基础 URL
 const API_BASE_URL = 'http://localhost:8000';
@@ -13,6 +12,26 @@ const AuthButton = () => {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check authentication status on mount
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
+
+  const checkAuthStatus = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/auth/status`);
+      setIsAuthenticated(response.data.authenticated);
+      if (response.data.authenticated) {
+        fetchUserData();
+      }
+    } catch (err) {
+      console.error('Auth status check failed:', err);
+      setIsAuthenticated(false);
+    }
+  };
+
   // 开始授权流程
   const handleLogin = async () => {
     setLoading(true);
@@ -28,7 +47,6 @@ const AuthButton = () => {
     }
   };
 
-
   // 处理授权回调（应在回调页面调用）
   const handleCallback = async () => {
     // 从 URL 参数中获取授权码
@@ -42,133 +60,136 @@ const AuthButton = () => {
 
     try {
       setLoading(true);
-      // 发送授权码到后端换取访问令牌 (后端会以 HttpOnly cookies 返回令牌)
+      // 发送授权码到后端换取访问令牌 (backend sets httpOnly cookies)
       const response = await axios.get(`${API_BASE_URL}/auth/callback`, {
         params: { code },
-        withCredentials: true,
+        withCredentials: true
       });
 
-      if (response.data?.success) {
-        // fetch user data now that cookies are set
-        await fetchUserData();
+      if (response.data.success) {
+        setIsAuthenticated(true);
         setError(null);
+        
+        // Fetch user data immediately after successful auth
+        await fetchUserData();
+        
         // 清除 URL 中的授权码参数
         window.history.replaceState({}, document.title, window.location.pathname);
-      } else {
-        setError('授权失败');
       }
-
     } catch (err) {
       setError('授权失败: ' + (err.response?.data?.detail || err.message));
+      setIsAuthenticated(false);
     } finally {
       setLoading(false);
     }
   };
 
-  // 获取用户信息（使用 HttpOnly cookie 中的 access_token）
+  // 获取用户信息
   const fetchUserData = async () => {
     try {
       setLoading(true);
       const response = await axios.get(`${API_BASE_URL}/api/user`, {
-        withCredentials: true,
+        withCredentials: true
       });
       
       setUserData(response.data);
-      try { localStorage.setItem('osu_user', JSON.stringify(response.data)) } catch (e) {}
       setError(null);
     } catch (err) {
-      // 如果未认证，尝试使用刷新令牌 endpoint 刷新一次
       if (err.response?.status === 401) {
-        try {
-          await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
-          // retry
-          const retry = await axios.get(`${API_BASE_URL}/api/user`, { withCredentials: true });
-          setUserData(retry.data);
-          try { localStorage.setItem('osu_user', JSON.stringify(retry.data)) } catch (e) {}
-          setError(null);
-          return;
-        } catch (refreshErr) {
-          // refresh failed — ensure logged out
-          handleLogout();
-          setError('Session expired, please log in again.');
-          return;
-        }
+        // Token expired or invalid, try refresh
+        await refreshAccessToken();
+      } else {
+        setError('获取用户信息失败: ' + (err.response?.data?.detail || err.message));
       }
-
-      setError('获取用户信息失败: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
   };
 
-  // 检查 URL 是否有授权码（用于回调页面）并尝试静默恢复会话
-  React.useEffect(() => {
+  // 检查 URL 是否有授权码（用于回调页面）
+  useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('code')) {
       handleCallback();
-    } else {
-      // 尝试从服务端读取当前会话（如果 cookie 存在）
-      fetchUserData();
     }
   }, []);
 
-  // 略去本地 token 过期轮询：刷新由服务器端 cookie + /auth/refresh 处理（需要时会触发）
-
-  // 刷新由后端 cookie-managed refresh 处理（见 fetchUserData 的自动重试）
-  
-  // 登出（调用后端清除 cookies）
-  const handleLogout = async () => {
+  // 刷新访问令牌
+  const refreshAccessToken = async () => {
     try {
-      await axios.post(`${API_BASE_URL}/auth/logout`, {}, { withCredentials: true });
+      const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+        withCredentials: true
+      });
+
+      if (response.data.success) {
+        setIsAuthenticated(true);
+        // Retry fetching user data
+        await fetchUserData();
+      }
     } catch (err) {
-      console.warn('Logout request failed:', err);
+      console.error('令牌刷新失败:', err);
+      setIsAuthenticated(false);
+      setUserData(null);
     }
-    try { localStorage.removeItem('osu_user') } catch (e) {}
-    setUserData(null);
   };
 
-  // Try to restore persisted user info for quick UI render while validating session
-  React.useEffect(() => {
-    const stored = localStorage.getItem('osu_user');
-    if (stored) {
-      try {
-        setUserData(JSON.parse(stored));
-      } catch (e) {
-        try { localStorage.removeItem('osu_user') } catch (e) {}
-      }
+  // 登出
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${API_BASE_URL}/auth/logout`, {}, {
+        withCredentials: true
+      });
+      setIsAuthenticated(false);
+      setUserData(null);
+      setError(null);
+    } catch (err) {
+      console.error('Logout failed:', err);
+      // Force logout on frontend even if backend call fails
+      setIsAuthenticated(false);
+      setUserData(null);
     }
-  }, []);
-
-  // Persist userData whenever it changes
-  React.useEffect(() => {
-    if (userData) {
-      try {
-        localStorage.setItem('osu_user', JSON.stringify(userData));
-      } catch (e) {
-        console.warn('Failed to persist osu_user', e);
-      }
-    }
-  }, [userData]);
-
-  // (old) 登出 removed - using async handleLogout above which calls server to clear cookies
+  };
 
   return (
     <div className="auth-container">
-
-      {userData && (
+      {isAuthenticated && userData && (
         <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 1000, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {userData && (() => {
-            const avatar = userData.avatar_url || userData.avatar || userData.avatarUrl || null;
-            const username = userData.username || userData.name || null;
-            return (
+          {(() => {
+            const avatar = userData.avatar_url;
+            const username = userData.username;
+            if (avatar && username) return (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {username && <div style={{ color: '#fff', fontWeight: 600 }}>{username}</div>}
-                {avatar && <img src={avatar} alt={username ? `${username} avatar` : 'avatar'} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.9)' }} />}
+                <div style={{ color: '#fff', fontWeight: 500 }}>{username}</div>
+                <img 
+                  src={avatar} 
+                  alt={`${username} avatar`} 
+                  style={{ 
+                    width: 40, 
+                    height: 40, 
+                    borderRadius: '50%', 
+                    objectFit: 'cover', 
+                    border: '2px solid rgba(255,255,255,0.9)' 
+                  }} 
+                />
               </div>
-            )
+            );
+            return null;
           })()}
 
-          <Button onClick={handleLogout} style={{ backgroundColor: '#ff4444', color: '#fff', width: '40px', height: '40px', padding: 0, borderRadius: '6px' }} className="flex items-center justify-center" aria-label="Logout" title="Logout">
+          <Button 
+            onClick={handleLogout} 
+            style={{ 
+              backgroundColor: '#24222A', 
+              color: '#fff', 
+              width: '40px', 
+              height: '40px', 
+              padding: 0, 
+              borderRadius: '6px' 
+            }} 
+            className="flex items-center justify-center" 
+            aria-label="Logout" 
+            title="Logout"
+          >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M16 17l5-5-5-5" />
               <path d="M21 12H9" />
@@ -176,24 +197,22 @@ const AuthButton = () => {
             </svg>
           </Button>
         </div>
+      )}
       
-      )
-    }
       {loading && <p>加载中...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       
-      {!userData ? (
+      {!isAuthenticated ? (
         <button onClick={handleLogin} disabled={loading}>
           {loading ? '正在连接到 osu!...' : 'Login with osu!'}
         </button>
       ) : (
         <div>
           <div style={{ marginTop: '20px' }}>
-            {/* logged in */}
+            {/* Authenticated content */}
           </div>
         </div>
       )}
-      
     </div>
   );
 };

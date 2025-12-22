@@ -1,21 +1,27 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
+from sqlmodel import Session, select
+from datetime import datetime
 import httpx
 import os
 from urllib.parse import urlencode
 from dotenv import load_dotenv
-import secrets
+from app.database import create_db_and_tables, get_session, engine
+from app.models import User
 
 load_dotenv()
 
 app = FastAPI()
 
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
+
 # 配置 CORS，允许 React 前端访问
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],  # Vite 默认端口
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],  # Vite 默认端口
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,11 +33,6 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTH_URL = "https://osu.ppy.sh/oauth/authorize"
 TOKEN_URL = "https://osu.ppy.sh/oauth/token"
 SCOPES = "public identify"
-
-# cookie behavior: in development (localhost) we may need secure=False
-COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
-ACCESS_TOKEN_MAX_AGE = int(os.getenv("ACCESS_TOKEN_MAX_AGE", 3600))  # default 1 hour
-REFRESH_TOKEN_MAX_AGE = int(os.getenv("REFRESH_TOKEN_MAX_AGE", 14 * 24 * 3600))  # default 14 days
 
 @app.get("/auth/login")
 async def login():
@@ -45,7 +46,7 @@ async def login():
 
 @app.get("/auth/callback")
 async def auth_callback(code: str, state: str = None):
-    """处理 osu! 的回调，用授权码换取访问令牌，并将令牌写入 HttpOnly cookies"""
+    """处理 osu! 的回调，用授权码换取访问令牌"""
     print(f"Received code: {code}, state: {state}")
     if not code:
         raise HTTPException(status_code=400, detail="缺少授权码")
@@ -75,43 +76,42 @@ async def auth_callback(code: str, state: str = None):
                 token_info = response.json()
                 access_token = token_info.get("access_token")
                 refresh_token = token_info.get("refresh_token")
-                expires_in = int(token_info.get("expires_in") or ACCESS_TOKEN_MAX_AGE)
-
-                # CSRF token (double submit cookie pattern)
-                csrf_token = secrets.token_urlsafe(16)
-
-                resp = JSONResponse({"success": True})
-                # Set HttpOnly cookies for tokens
-                resp.set_cookie(
-                    key="access_token",
+                expires_in = token_info.get("expires_in", 86400)  # Default 24 hours
+                
+                # Fetch user data from osu! API
+                user_data = await fetch_osu_user_data(access_token)
+                
+                # Store user in database
+                if user_data:
+                    await store_user_in_db(user_data)
+                
+                # Create response and set httpOnly cookies
+                json_response = JSONResponse({
+                    "success": True,
+                    "message": "Authentication successful"
+                })
+                
+                # Set access token cookie (httpOnly, secure in production)
+                json_response.set_cookie(
+                    key="osu_access_token",
                     value=access_token,
                     httponly=True,
-                    secure=COOKIE_SECURE,
+                    secure=False,  # Set to True in production with HTTPS
                     samesite="lax",
-                    max_age=expires_in,
-                    path="/",
+                    max_age=expires_in
                 )
-                resp.set_cookie(
-                    key="refresh_token",
+                
+                # Set refresh token cookie (httpOnly, secure in production, longer expiry)
+                json_response.set_cookie(
+                    key="osu_refresh_token",
                     value=refresh_token,
                     httponly=True,
-                    secure=COOKIE_SECURE,
+                    secure=False,  # Set to True in production with HTTPS
                     samesite="lax",
-                    max_age=REFRESH_TOKEN_MAX_AGE,
-                    path="/",
+                    max_age=expires_in * 30  # Refresh token lasts longer
                 )
-                # Set CSRF cookie (readable by JS)
-                resp.set_cookie(
-                    key="csrf_token",
-                    value=csrf_token,
-                    httponly=False,
-                    secure=COOKIE_SECURE,
-                    samesite="lax",
-                    max_age=REFRESH_TOKEN_MAX_AGE,
-                    path="/",
-                )
-
-                return resp
+                
+                return json_response
             else:
                 error_detail = response.json().get("error_description", "未知错误")
                 raise HTTPException(status_code=400, detail=f"令牌请求失败: {error_detail}")
@@ -122,15 +122,12 @@ async def auth_callback(code: str, state: str = None):
 
 @app.post("/auth/refresh")
 async def refresh_token(request: Request):
-    """使用 HttpOnly 刷新令牌 cookie 获取新的访问令牌，并更新 access_token cookie。需要校验 CSRF 令牌。"""
-    refresh_token = request.cookies.get("refresh_token")
-    csrf_cookie = request.cookies.get("csrf_token")
-    csrf_header = request.headers.get("x-csrf-token")
+    """使用刷新令牌获取新的访问令牌"""
+    refresh_token = request.cookies.get("osu_refresh_token")
+    
     if not refresh_token:
-        raise HTTPException(status_code=401, detail="缺少刷新令牌")
-    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
-        raise HTTPException(status_code=403, detail="CSRF token mismatch")
-
+        raise HTTPException(status_code=401, detail="未找到刷新令牌")
+    
     refresh_data = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
@@ -152,38 +149,48 @@ async def refresh_token(request: Request):
         if response.status_code == 200:
             token_info = response.json()
             access_token = token_info.get("access_token")
-            expires_in = int(token_info.get("expires_in") or ACCESS_TOKEN_MAX_AGE)
-            resp = JSONResponse({"success": True})
-            resp.set_cookie(
-                key="access_token",
+            new_refresh_token = token_info.get("refresh_token")
+            expires_in = token_info.get("expires_in", 86400)
+            
+            json_response = JSONResponse({
+                "success": True,
+                "message": "Token refreshed successfully"
+            })
+            
+            json_response.set_cookie(
+                key="osu_access_token",
                 value=access_token,
                 httponly=True,
-                secure=COOKIE_SECURE,
+                secure=False,
                 samesite="lax",
-                max_age=expires_in,
-                path="/",
+                max_age=expires_in
             )
-            return resp
+            
+            json_response.set_cookie(
+                key="osu_refresh_token",
+                value=new_refresh_token,
+                httponly=True,
+                secure=False,
+                samesite="lax",
+                max_age=expires_in * 30
+            )
+            
+            return json_response
         else:
             raise HTTPException(status_code=400, detail="令牌刷新失败")
 
 @app.get("/api/user")
 async def get_current_user(request: Request):
-    """使用存储在 HttpOnly cookie 中的访问令牌获取当前用户信息（示例API调用）"""
-    # 优先检查 Authorization header（Bearer），否则使用 cookie
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.split(" ", 1)[1]
-    else:
-        token = request.cookies.get("access_token")
-
-    if not token:
-        raise HTTPException(status_code=401, detail="缺少访问令牌")
-
+    """使用访问令牌获取当前用户信息（示例API调用）"""
+    access_token = request.cookies.get("osu_access_token")
+    
+    if not access_token:
+        raise HTTPException(status_code=401, detail="未找到访问令牌")
+    
     async with httpx.AsyncClient() as client:
         response = await client.get(
             "https://osu.ppy.sh/api/v2/me",
-            headers={"Authorization": f"Bearer {token}"}
+            headers={"Authorization": f"Bearer {access_token}"}
         )
         
         if response.status_code == 200:
@@ -193,12 +200,96 @@ async def get_current_user(request: Request):
 
 @app.post("/auth/logout")
 async def logout():
-    resp = JSONResponse({"success": True})
-    # Clear cookies
-    resp.delete_cookie("access_token", path="/")
-    resp.delete_cookie("refresh_token", path="/")
-    resp.delete_cookie("csrf_token", path="/")
-    return resp
+    """清除认证 cookies"""
+    response = JSONResponse({"success": True, "message": "Logged out successfully"})
+    response.delete_cookie(key="osu_access_token", samesite="lax")
+    response.delete_cookie(key="osu_refresh_token", samesite="lax")
+    return response
+
+@app.get("/auth/status")
+async def auth_status(request: Request):
+    """检查用户是否已认证"""
+    access_token = request.cookies.get("osu_access_token")
+    return {"authenticated": bool(access_token)}
+
+@app.get("/api/leaderboard")
+async def get_leaderboard():
+    """Get top players leaderboard from database"""
+    with Session(engine) as session:
+        try:
+            statement = select(User).order_by(User.score.desc()).limit(10)
+            users = session.exec(statement).all()
+            
+            leaderboard = [
+                {
+                    "position": idx + 1,
+                    "osu_id": user.osu_id,
+                    "username": user.username,
+                    "avatar_url": user.avatar_url,
+                    "score": user.score
+                }
+                for idx, user in enumerate(users)
+            ]
+            
+            return {"leaderboard": leaderboard}
+        except Exception as e:
+            print(f"Error fetching leaderboard: {e}")
+            raise HTTPException(status_code=500, detail="Failed to fetch leaderboard")
+
+async def fetch_osu_user_data(access_token: str):
+    """Fetch user data from osu! API"""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                "https://osu.ppy.sh/api/v2/me",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            print(f"Error fetching user data: {e}")
+            return None
+
+async def store_user_in_db(user_data: dict):
+    """Store or update user in database"""
+    with Session(engine) as session:
+        try:
+            osu_id = user_data.get("id")
+            username = user_data.get("username")
+            avatar_url = user_data.get("avatar_url")
+            
+            # Get statistics (score might be in different fields depending on mode)
+            statistics = user_data.get("statistics", {})
+            score = statistics.get("ranked_score", 0)  # or total_score, pp, etc.
+            
+            # Check if user exists
+            statement = select(User).where(User.osu_id == osu_id)
+            existing_user = session.exec(statement).first()
+            
+            if existing_user:
+                # Update existing user
+                existing_user.username = username
+                existing_user.avatar_url = avatar_url
+                existing_user.score = score
+                existing_user.updated_at = datetime.utcnow()
+            else:
+                # Create new user
+                new_user = User(
+                    osu_id=osu_id,
+                    username=username,
+                    avatar_url=avatar_url,
+                    score=score
+                )
+                session.add(new_user)
+            
+            session.commit()
+            print(f"User {username} (ID: {osu_id}) stored successfully")
+        except Exception as e:
+            print(f"Error storing user in database: {e}")
+            session.rollback()
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

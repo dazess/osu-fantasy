@@ -30,13 +30,19 @@ const CallbackPage = () => {
       try {
         setStatus('正在验证授权码...');
         
-        // 发送授权码到后端 (后端会通过 HttpOnly cookies 设置令牌)
+        // 发送授权码到后端
         const response = await axios.get(`${API_BASE_URL}/auth/callback`, {
-          params: { code },
-          withCredentials: true,
+          params: { code }
         });
         console.log('Callback response:', response.data);
         if (response.data.success) {
+          // 存储令牌
+          localStorage.setItem('osu_access_token', response.data.access_token);
+          localStorage.setItem('osu_refresh_token', response.data.refresh_token);
+          localStorage.setItem('osu_token_expiry', 
+            Date.now() + (response.data.expires_in * 1000)
+          );
+          
           setStatus('授权成功！正在跳转...');
           setTimeout(() => navigate('/'), 2000);
         }

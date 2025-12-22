@@ -4,8 +4,11 @@ from typing import Optional
 
 
 class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    username: str = Field(index=True, unique=True)
-    email: Optional[str] = None
-    hashed_password: str
+    __tablename__ = "users"
+    
+    osu_id: int = Field(primary_key=True)
+    username: str = Field(index=True)
+    avatar_url: Optional[str] = None
+    score: int = Field(default=0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

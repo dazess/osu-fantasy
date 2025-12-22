@@ -1,7 +1,7 @@
 import React from 'react'
 import AuthButton from '../components/AuthButton'
 import ShadButton from '../components/ui/ShadButton'
-
+import { LeagueItem } from '../components/league-item'
 
 export default function Landing(){
   return (
@@ -14,10 +14,9 @@ export default function Landing(){
 
         <div style={{ marginTop: 18 }}>
           <AuthButton />
-
+          <LeagueItem leagueName="osu! World Cup 2025" />
         </div>
       </div>
     </div>
   )
 }
-

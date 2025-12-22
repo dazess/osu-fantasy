@@ -1,5 +1,8 @@
 
 /* removed tw-animate-css import (not installed) */
+@import "tailwindcss/preflight";
+/* Register animations via tailwind config plugin */
+@custom-variant dark (&:is(.dark *));
 
 /* Self-hosted Torus fonts */
 @font-face {
@@ -23,10 +26,6 @@
   font-style: normal;
   font-display: swap;
 }
-
-@import "tailwindcss/preflight";
-/* Register animations via tailwind config plugin */
-@custom-variant dark (&:is(.dark *));
 
 
 @tailwind utilities;
