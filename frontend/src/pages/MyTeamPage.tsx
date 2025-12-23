@@ -152,7 +152,7 @@ export default function MyTeamPage() {
             onClick={() => navigate('/league/owc2025')}
             className="button-texture bg-[#2a2a4e] hover:bg-[#3a3a5e] px-4 py-2 rounded-lg flex items-center gap-2"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back
@@ -199,7 +199,7 @@ export default function MyTeamPage() {
           <div className="lg:col-span-1">
             <div className="bg-[#2a2a4e] rounded-xl p-4 sticky top-4">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <svg className="w-6 h-6 text-[#f39c12]" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="text-[#f39c12]" style={{ width: 20, height: 20 }} fill="currentColor" viewBox="0 0 20 20">
                   <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
                 </svg>
                 Your Team ({selectedIds.length}/{maxTeamSize})
@@ -216,14 +216,21 @@ export default function MyTeamPage() {
                       key={player.id}
                       className="flex items-center gap-3 bg-[#1a1a2e] rounded-lg p-3 group"
                     >
-                      <img
-                        src={player.avatar_url || `https://a.ppy.sh/${player.id}`}
-                        alt={player.username}
-                        className="w-10 h-10 rounded-full"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'https://osu.ppy.sh/images/layout/avatar-guest.png';
-                        }}
-                      />
+                      <button
+                        type="button"
+                        onClick={() => togglePlayer(player.id)}
+                        className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#f39c12] focus:ring-offset-2 focus:ring-offset-[#1a1a2e]"
+                        title={`Remove ${player.username}`}
+                      >
+                        <img
+                          src={player.avatar_url || `https://a.ppy.sh/${player.id}`}
+                          alt={player.username}                          className="rounded-full object-cover"
+                          style={{ width: 60, height: 60 }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://osu.ppy.sh/images/layout/avatar-guest.png';
+                          }}
+                        />
+                      </button>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{player.username}</div>
                         <div className="text-sm text-gray-400">{player.country}</div>
@@ -233,7 +240,7 @@ export default function MyTeamPage() {
                         onClick={() => togglePlayer(player.id)}
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
@@ -302,7 +309,8 @@ export default function MyTeamPage() {
                       <img
                         src={player.avatar_url || `https://a.ppy.sh/${player.id}`}
                         alt={player.username}
-                        className="w-12 h-12 rounded-full"
+                        className="rounded-full object-cover"
+                        style={{ width: 40, height: 40 }}
                         onError={(e) => {
                           (e.target as HTMLImageElement).src = 'https://osu.ppy.sh/images/layout/avatar-guest.png';
                         }}
@@ -315,7 +323,7 @@ export default function MyTeamPage() {
                         ${player.cost}
                       </div>
                       {isSelected && (
-                        <svg className="w-5 h-5 text-[#f39c12]" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="text-[#f39c12]" style={{ width: 12, height: 12 }} fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                       )}

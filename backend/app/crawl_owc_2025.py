@@ -88,6 +88,15 @@ def extract_country_from_cell(cell) -> Optional[str]:
             if m:
                 return m.group(1).upper()
 
+    # Look for flag spans (osu! wiki uses these for country flags)
+    for el in cell.find_all(["span", "div", "i"]):
+        cls = " ".join(el.get("class", [])) if el.get("class") else ""
+        if "flag-country" in cls.lower() or "flag" in cls.lower():
+            for attr in ("title", "aria-label", "data-country", "data-country-name", "data-tooltip"):
+                val = el.get(attr)
+                if val:
+                    return val.strip()
+
     # Look for a span or link with country name near a flag
     for span in cell.find_all(["span", "a"]):
         text = span.get_text(strip=True)
@@ -123,6 +132,23 @@ def extract_players_with_countries(section_soup: BeautifulSoup, base_url: str = 
     tables = section_soup.find_all("table")
 
     for table in tables:
+        country_idx = None
+        members_idx = None
+        header_row = None
+        thead = table.find("thead")
+        if thead:
+            header_row = thead.find("tr")
+        if header_row is None:
+            header_row = table.find("tr")
+        if header_row:
+            header_cells = header_row.find_all(["th", "td"])
+            for idx, cell in enumerate(header_cells):
+                text = cell.get_text(strip=True).lower()
+                if "country" in text and country_idx is None:
+                    country_idx = idx
+                if "member" in text and members_idx is None:
+                    members_idx = idx
+
         # Iterate over all rows
         for row in table.find_all("tr"):
             cells = row.find_all(["td", "th"])
@@ -131,13 +157,22 @@ def extract_players_with_countries(section_soup: BeautifulSoup, base_url: str = 
             if len(cells) < 2:
                 continue
 
-            # Check for header row (skip if first cell says "Country")
-            first_cell_text = cells[0].get_text(strip=True)
-            if "country" in first_cell_text.lower() or "team" in first_cell_text.lower():
+            # Check for header row
+            header_text = " ".join(cell.get_text(strip=True).lower() for cell in cells)
+            if "country" in header_text and ("member" in header_text or row.find("th")):
                 continue
 
-            # Column 0: Country Name - use improved extraction
-            country_name = extract_country_from_cell(cells[0])
+            # Resolve country cell by header if present, otherwise fall back to common layouts
+            country_cell = None
+            if country_idx is not None and country_idx < len(cells):
+                country_cell = cells[country_idx]
+            elif len(cells) >= 3:
+                country_cell = cells[1]
+            else:
+                country_cell = cells[0]
+
+            # Country Name - use improved extraction
+            country_name = extract_country_from_cell(country_cell)
 
             # If the country cell is empty, try to get it from flag in the same row
             if not country_name:
@@ -153,10 +188,25 @@ def extract_players_with_countries(section_soup: BeautifulSoup, base_url: str = 
                         if img.get("title"):
                             country_name = img.get("title").strip()
                             break
+                if not country_name:
+                    # Try flag spans (osu! wiki)
+                    for el in row.find_all(["span", "div", "i"]):
+                        cls = " ".join(el.get("class", [])) if el.get("class") else ""
+                        if "flag-country" in cls.lower() or "flag" in cls.lower():
+                            for attr in ("title", "aria-label", "data-country", "data-country-name", "data-tooltip"):
+                                val = el.get(attr)
+                                if val:
+                                    country_name = val.strip()
+                                    break
+                        if country_name:
+                            break
 
             # Column 1 (and onwards): Member links
             # We iterate all subsequent cells just in case of colspan or extra columns
-            for cell in cells[1:]:
+            member_cells = cells[1:]
+            if members_idx is not None and members_idx < len(cells):
+                member_cells = cells[members_idx: members_idx + 1]
+            for cell in member_cells:
                 for a in cell.find_all("a", href=True):
                     href = a["href"]
                     if "/users/" in href:
