@@ -55,3 +55,12 @@ Vite proxies `/api` requests to `http://localhost:8000` during development, so t
 
 - This is intentionally minimal. For production, add: HTTPS, secure cookies, refresh tokens, CSRF protection, rate limiting, input validation, stronger password rules, and tests.
 - To test the flow: register a user, then login to obtain a token and call `/api/me`.
+
+Workflow sorry no doc yet:
+Initial crawl: python [crawl_owc_2025.py](http://_vscodecontentref_/0) --recreate (sets rank-based costs)
+
+
+Do these per week:
+Mark playing: python update_playing_status.py (marks active countries)
+Calculate p_scores: python calculate_pscores.py --matches 119719487 ...
+Update costs: python update_costs_by_pscore.py (adjusts costs by performance)

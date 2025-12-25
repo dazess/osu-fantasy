@@ -10,9 +10,10 @@ const API_BASE_URL = 'http://localhost:8000';
 
 const AuthButton = () => {
   const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   // Check authentication status on mount
   useEffect(() => {
@@ -24,11 +25,14 @@ const AuthButton = () => {
       const response = await axios.get(`${API_BASE_URL}/auth/status`);
       setIsAuthenticated(response.data.authenticated);
       if (response.data.authenticated) {
-        fetchUserData();
+        await fetchUserData();
       }
     } catch (err) {
       console.error('Auth status check failed:', err);
       setIsAuthenticated(false);
+    } finally {
+      setInitialized(true);
+      setLoading(false);
     }
   };
 
@@ -150,70 +154,65 @@ const AuthButton = () => {
     }
   };
 
-  return (
-    <div className="auth-container">
-      {isAuthenticated && userData && (
-        <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 1000, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {(() => {
-            const avatar = userData.avatar_url;
-            const username = userData.username;
-            if (avatar && username) return (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ color: '#fff', fontWeight: 500 }}>{username}</div>
-                <img 
-                  src={avatar} 
-                  alt={`${username} avatar`} 
-                  style={{ 
-                    width: 40, 
-                    height: 40, 
-                    borderRadius: '50%', 
-                    objectFit: 'cover', 
-                    border: '2px solid rgba(255,255,255,0.9)' 
-                  }} 
-                />
-              </div>
-            );
-            return null;
-          })()}
-
-          <Button 
-            onClick={handleLogout} 
-            style={{ 
-              backgroundColor: '#24222A', 
-              color: '#fff', 
-              width: '40px', 
-              height: '40px', 
-              padding: 0, 
-              borderRadius: '6px' 
-            }} 
-            className="flex items-center justify-center" 
-            aria-label="Logout" 
-            title="Logout"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M16 17l5-5-5-5" />
-              <path d="M21 12H9" />
-              <path d="M9 19H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4" />
-            </svg>
-          </Button>
+  if (!initialized) {
+    return (
+      <div className="bg-[#16162a] border-b border-white/10" style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-end gap-3">
+          <div style={{ color: '#fff', fontWeight: 500 }}>Loading...</div>
         </div>
-      )}
-      
-      {loading && <p>加载中...</p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      
-      {!isAuthenticated ? (
-        <button onClick={handleLogin} disabled={loading} className="button-texture">
-          {loading ? '正在连接到 osu!...' : 'Login with osu!'}
-        </button>
-      ) : (
-        <div>
-          <div style={{ marginTop: '20px' }}>
-            {/* Authenticated content */}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {isAuthenticated && userData ? (
+        <div className="bg-[#16162a] border-b border-white/10" style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-end gap-6">
+            <div style={{ color: '#fff', fontWeight: 500, marginRight: '8px' }}>{userData.username}</div>
+            <img 
+              src={userData.avatar_url} 
+              alt={`${userData.username} avatar`} 
+              style={{ 
+                width: 40, 
+                height: 40, 
+                borderRadius: '50%', 
+                objectFit: 'cover', 
+                border: '2px solid rgba(255,255,255,0.9)', 
+                marginRight: '4px'
+              }} 
+            />
+            <Button 
+              onClick={handleLogout} 
+              style={{ 
+                backgroundColor: '#24222A', 
+                color: '#fff', 
+                width: '40px', 
+                height: '40px', 
+                padding: 0, 
+                borderRadius: '6px' 
+              }} 
+              className="flex items-center justify-center" 
+              aria-label="Logout" 
+              title="Logout"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M16 17l5-5-5-5" />
+                <path d="M21 12H9" />
+                <path d="M9 19H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4" />
+              </svg>
+            </Button>
           </div>
         </div>
-      )}
-    </div>
+      ) : !isAuthenticated ? (
+        <div className="auth-container" style={{ padding: '20px', textAlign: 'center' }}>
+          {error && <p style={{ color: 'red', marginBottom: '10px' }}>{error}</p>}
+          <button onClick={handleLogin} disabled={loading} className="button-texture">
+            {loading ? 'Logging in to osu!...' : 'Login with osu!'}
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 };
 

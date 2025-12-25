@@ -5,14 +5,15 @@ import AuthButton from './components/AuthButton'
 import CallbackPage from './components/CallbackPage'
 import OWC2025Page from './pages/OWC2025Page'
 import MyTeamPage from './pages/MyTeamPage'
+import ProtectedRoute from './components/ProtectedRoute'
 
 function App(){
   return (
     <Router>
       <Routes>
         <Route path="/" element={<Landing/>} />
-        <Route path="/league/owc2025" element={<OWC2025Page />} />
-        <Route path="/league/owc2025/my-team" element={<MyTeamPage />} />
+        <Route path="/league/owc2025" element={<ProtectedRoute><OWC2025Page /></ProtectedRoute>} />
+        <Route path="/league/owc2025/my-team" element={<ProtectedRoute><MyTeamPage /></ProtectedRoute>} />
         <Route path="/auth" element={<AuthButton />} />
         <Route path="/auth/callback" element={<CallbackPage />} />
       </Routes>

@@ -45,9 +45,9 @@ export function LeagueHero() {
   }
 
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-[#2c3e50] to-[#34495e] py-16">
+    <section className="relative overflow-hidden bg-gradient-to-b from-[#2c3e50] to-[#34495e] py-16 pt-24">
       {/* My Team Button */}
-      <div className="absolute top-4 left-4">
+      <div className="absolute top-20 left-4">
         <button
           onClick={() => navigate('/league/owc2025/my-team')}
           className="button-texture bg-[#f39c12] hover:bg-[#e67e22] text-white font-semibold px-6 py-2 rounded-lg transition-colors"

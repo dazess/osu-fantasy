@@ -32,7 +32,7 @@
 
 /* small project defaults */
 @layer base {
-  html, body { background: #f6f8fa; color: #111; font-family: 'Torus', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'sans-serif'; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  html, body { background: #f6f8fa; font-family: 'Torus', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   input { padding: 8px; border: 1px solid #ddd; border-radius: 4px }
   button { padding: 8px 12px; border-radius: 4px }
 }
@@ -99,9 +99,9 @@
     padding: 0;
   }
 
-  /* apply theme background to body */
-  body {
-    @apply bg-background text-foreground;
+  /* Force white text for text-white utility */
+  .text-white {
+    color: #ffffff !important;
   }
 }
 

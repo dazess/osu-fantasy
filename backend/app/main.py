@@ -18,9 +18,9 @@ from app.models import User, Team
 PLAYERS_DB_PATH = Path(__file__).parent / "players.db"
 
 # Budget configuration
-TOTAL_BUDGET = 60000  # Total budget for team (allows ~6-8 players at avg 7500 cost)
-MAX_TEAM_SIZE = 8
-DEFAULT_PLAYER_COST = 7500  # Base cost per player (middle of 5000-10000 range)
+TOTAL_BUDGET = 35000  # Total budget for team (allows 5 players at avg 7000 cost)
+MAX_TEAM_SIZE = 5
+DEFAULT_PLAYER_COST = 7000  # Base cost per player
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BASE_DIR / ".env")
@@ -322,7 +322,14 @@ async def get_players(tournament: str = "owc2025"):
     try:
         conn = get_players_db()
         cursor = conn.cursor()
-        cursor.execute(f'SELECT id, username, profile_url, avatar_url, country, rank, cost, playing, p_score, matches_played, total_maps_played FROM "{table_name}"')
+        
+        # First, try to get all columns including optional ones
+        try:
+            cursor.execute(f'SELECT id, username, profile_url, avatar_url, country, rank, cost, playing, p_score, matches_played, total_maps_played FROM "{table_name}"')
+        except sqlite3.OperationalError:
+            # If some columns don't exist, fall back to basic columns
+            cursor.execute(f'SELECT id, username, profile_url, avatar_url, country, rank, cost, playing FROM "{table_name}"')
+        
         rows = cursor.fetchall()
         conn.close()
 
@@ -336,13 +343,13 @@ async def get_players(tournament: str = "owc2025"):
             except (KeyError, IndexError):
                 playing = False
             
-            # Handle p_score fields
+            # Handle p_score fields - default to 1.0 if not available
             try:
-                p_score = float(row["p_score"]) if row["p_score"] is not None else 0.0
+                p_score = float(row["p_score"]) if row["p_score"] is not None else 1.0
                 matches_played = int(row["matches_played"]) if row["matches_played"] is not None else 0
                 total_maps_played = int(row["total_maps_played"]) if row["total_maps_played"] is not None else 0
             except (KeyError, IndexError, ValueError, TypeError):
-                p_score = 0.0
+                p_score = 1.0
                 matches_played = 0
                 total_maps_played = 0
 

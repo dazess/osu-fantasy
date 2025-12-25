@@ -1,9 +1,14 @@
 import React from 'react';
 import { LeagueHero } from '@/components/league-hero';
+import AuthButton from '@/components/AuthButton';
+
 export default function OWC2025Page() {
   return (
-    <div className="min-h-screen bg-[#1e1e2e] text-white">
-      <LeagueHero />
+    <div className="t bg-[#1e1e2e] text-white relative">
+      <AuthButton />
+      <div className="pt-4">
+        <LeagueHero />
+      </div>
     </div>
   );
 }
