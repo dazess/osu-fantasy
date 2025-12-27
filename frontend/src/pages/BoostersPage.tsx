@@ -285,7 +285,30 @@ export default function BoostersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#24222A] text-white">
+    <div className="min-h-screen bg-[#24222A] text-white" style={{
+      scrollbarWidth: 'thin',
+      scrollbarColor: '#3a3a5e #1a1a2e'
+    }}>
+      <style>{`
+        html, body {
+          background-color: #24222A !important;
+          overflow-x: hidden;
+        }
+        ::-webkit-scrollbar {
+          width: 12px;
+        }
+        ::-webkit-scrollbar-track {
+          background: #1a1a2e;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: #3a3a5e;
+          border-radius: 6px;
+          border: 2px solid #1a1a2e;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: #4a4a6e;
+        }
+      `}</style>
       <AuthButton />
       <div className="pt-4">
         {/* Header */}
@@ -354,7 +377,7 @@ export default function BoostersPage() {
                   </div>
                 </button>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 {players.map(player => {
                   const assignedBoosterId = getPlayerBooster(player.id);
                   const assignedBooster = assignedBoosterId ? BOOSTERS.find(b => b.id === assignedBoosterId) : null;
@@ -365,7 +388,7 @@ export default function BoostersPage() {
                       key={player.id}
                       onClick={() => setSelectedPlayer(player.id)}
                       className={`bg-[#2a2a4e] rounded-lg p-2 cursor-pointer transition-all flex-1 ${
-                        isSelected ? 'ring-2 ring-[#9b59b6] shadow-lg shadow-[#9b59b6]/20' : 'hover:bg-[#3a3a5e]'
+                        isSelected ? 'ring-2 ring-inset ring-[#9b59b6] shadow-lg shadow-[#9b59b6]/20' : 'hover:bg-[#3a3a5e]'
                       }`}
                     >
                       <div className="flex flex-col items-center gap-1">
@@ -417,7 +440,7 @@ export default function BoostersPage() {
               
               {!selectedPlayer ? (
                 <div className="bg-[#2a2a4e] rounded-lg p-4 text-center">
-                  <svg className="w-6 h-6 mx-auto mb-2 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg width="40" height="40" className="mx-auto mb-2 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
                   </svg>
                   <p className="text-white/50 text-xs">
@@ -427,10 +450,11 @@ export default function BoostersPage() {
               ) : (
                 <div className="bg-[#2a2a4e] rounded-lg p-3">
                   <div className="grid grid-cols-12 gap-1.5">
-                    {BOOSTERS.map(booster => {
+                    {BOOSTERS.map((booster, index) => {
                       const isUsed = isBoosterUsed(booster.id);
                       const isAssignedToCurrent = getPlayerBooster(selectedPlayer) === booster.id;
                       const canSelect = !isUsed || isAssignedToCurrent;
+                      const isRightSide = (index % 12) >= 6; // Check if booster is in right half
 
                       return (
                         <div
@@ -446,20 +470,34 @@ export default function BoostersPage() {
                         >
                           {/* Tooltip on hover */}
                           {canSelect && (
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-[#1a1a2e] border border-white/20 rounded-lg shadow-xl z-10 w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none">
-                              <h4 className="font-bold text-white text-sm mb-1">{booster.name}</h4>
-                              <p className="text-xs text-white/70 mb-1">
-                                <span className="font-semibold">Activation:</span> {booster.activation}
-                              </p>
-                              <p className="text-xs text-white/60 mb-1">{booster.description}</p>
-                              <p className="text-xs text-green-400 font-semibold">{booster.points}</p>
-                              {/* Arrow */}
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-8 border-transparent border-t-[#1a1a2e]"></div>
+                            <div className={`absolute top-0 px-4 py-3 bg-[#1a1a2e] border-2 border-[#9b59b6]/30 rounded-lg shadow-2xl z-50 w-80 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none ${
+                              isRightSide ? 'right-full mr-3' : 'left-full ml-3'
+                            }`}>
+                              <h4 className="font-bold text-white text-base mb-2 border-b border-white/10 pb-2">{booster.name}</h4>
+                              <div className="space-y-2">
+                                <div>
+                                  <p className="text-xs font-semibold text-[#9b59b6] mb-1">Activation:</p>
+                                  <p className="text-xs text-white/80 leading-relaxed">{booster.activation}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold text-[#9b59b6] mb-1">Description:</p>
+                                  <p className="text-xs text-white/80 leading-relaxed">{booster.description}</p>
+                                </div>
+                                <div className="pt-2 border-t border-white/10">
+                                  <p className="text-sm text-green-400 font-semibold">{booster.points}</p>
+                                </div>
+                              </div>
+                              {/* Arrow pointing to button */}
+                              <div className={`absolute top-4 border-8 border-transparent ${
+                                isRightSide 
+                                  ? 'left-full ml-[-1px] border-l-[#9b59b6]/30' 
+                                  : 'right-full mr-[-1px] border-r-[#9b59b6]/30'
+                              }`}></div>
                             </div>
                           )}
                           
                           {/* Placeholder Image */}
-                          <div className={`w-full aspect-square rounded flex items-center justify-center text-base ${
+                          <div className={`w-full aspect-square rounded flex items-center justify-center text-6xl ${
                             isAssignedToCurrent ? 'bg-white/20' : 'bg-white/5'
                           }`}>
                             {booster.id === 1 && '👻'}
