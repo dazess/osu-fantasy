@@ -22,5 +22,6 @@ class Team(SQLModel, table=True):
     tournament: str = Field(default="owc2025")  # Tournament identifier
     player_ids: str = Field(default="")  # Comma-separated player IDs from the tournament
     budget_used: int = Field(default=0)
+    boosters: str = Field(default="{}")  # JSON string mapping player_id to booster_id: {"player_id": booster_id}
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

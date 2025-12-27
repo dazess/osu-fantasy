@@ -1,0 +1,66 @@
+boosters: (ignore the +-50 points cap)
+
+booster 1:
+
+name: Hidden
+activation requirement: Blud did not get to play a single map :sob:
++5 points if success, no penalty
+
+booster 2:
+name: Captain
+activation req: The chosen player has led his team to victory. (if the chosen player is on the winning team or not)
++5 points if success, -5 if not
+
+booster 3:
+name: Noob
+acti req: The chosen player has the lowest p-score in a lobby. Players who did not play the match have a p-score of 1.
++5 points if success, -2 if not 
+
+booster 4:
+name: 727WYSI
+acti req: The chosen player gets a score with "727" in it on any map, or gets a 727 combo score. (AI pls word this better)
++7 points if success, no penalty
+
+booster 5:
+name: Boshyman741
+acti req: The chosen player only shows up on one map and top scores it in a lobby.
++5 points if success, -5 penalty
+
+booster 6:
+name: They Picked DT2
+acti req: The chosen player gets a B rank on any DT map (not only DT2)
++6 points if success, -2 penalty
+
+booster 7:
+name: Faker
+acti req: The chosen player has the highest p-score (has to be >= 1.8) in a lobby. 
++5 points if success, -5 penalty
+
+booster 8:
+name: LETS GO GAMBLING
+acti req: The chosen player S ranks 3 maps in a row.
++10 points if success, -10 penalty
+
+booster 9:
+name: ITS OVER 9000(k)
+acti req: The chosen player scores over 900k on any map 
++5 points if success, -5 penalty
+
+
+booster 10:
+name: TB HYPE
+acti req: The chosen player gets to play the tiebreaker map (showcases count). (to ai: i will link the tb map, just check if player has played it)
++3 points if success, no penalty
+
+booster 11:
+name: OVERWORKING
+acti req: The chosen player played every map in a lobby.
++5 points if success, -5 penalty
+
+booster 12:
+name: Inconsistent
+acti req: The chosen player gets lower than 1000 combo on every map in a lobby
++5 points if success, -5 penalty
+
+
+

@@ -27,7 +27,7 @@ export default function ProtectedRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#1a1a2e] text-white flex items-center justify-center">
+      <div className="min-h-screen bg-[#24222A] text-white flex items-center justify-center">
         <div className="text-xl">Loading...</div>
       </div>
     );

@@ -274,27 +274,22 @@ async def store_user_in_db(user_data: dict):
             username = user_data.get("username")
             avatar_url = user_data.get("avatar_url")
 
-            # Get statistics (score might be in different fields depending on mode)
-            statistics = user_data.get("statistics", {})
-            score = statistics.get("ranked_score", 0)  # or total_score, pp, etc.
-
             # Check if user exists
             statement = select(User).where(User.osu_id == osu_id)
             existing_user = session.exec(statement).first()
 
             if existing_user:
-                # Update existing user
+                # Update existing user (don't update score)
                 existing_user.username = username
                 existing_user.avatar_url = avatar_url
-                existing_user.score = score
                 existing_user.updated_at = datetime.utcnow()
             else:
-                # Create new user
+                # Create new user with default score of 0
                 new_user = User(
                     osu_id=osu_id,
                     username=username,
                     avatar_url=avatar_url,
-                    score=score
+                    score=0
                 )
                 session.add(new_user)
 
@@ -380,6 +375,7 @@ async def get_players(tournament: str = "owc2025"):
 class TeamSaveRequest(BaseModel):
     player_ids: List[int]
     tournament: str = "owc2025"
+    boosters: Optional[dict] = None  # Optional dict mapping player_id to booster_id
 
 
 @app.get("/api/team")
@@ -409,10 +405,18 @@ async def get_team(request: Request, tournament: str = "owc2025"):
                 "team": None,
                 "player_ids": [],
                 "budget_used": 0,
-                "budget_remaining": TOTAL_BUDGET
+                "budget_remaining": TOTAL_BUDGET,
+                "boosters": {}
             }
 
         player_ids = [int(pid) for pid in team.player_ids.split(",") if pid]
+        
+        # Parse boosters JSON
+        import json
+        try:
+            boosters = json.loads(team.boosters) if team.boosters else {}
+        except json.JSONDecodeError:
+            boosters = {}
 
         return {
             "team": {
@@ -423,7 +427,8 @@ async def get_team(request: Request, tournament: str = "owc2025"):
             },
             "player_ids": player_ids,
             "budget_used": team.budget_used,
-            "budget_remaining": TOTAL_BUDGET - team.budget_used
+            "budget_remaining": TOTAL_BUDGET - team.budget_used,
+            "boosters": boosters
         }
 
 
@@ -480,6 +485,15 @@ async def save_team(request: Request, team_data: TeamSaveRequest):
         )
 
     # Save team
+    import json
+    
+    # Prepare boosters data
+    boosters_json = "{}"
+    if team_data.boosters:
+        # Convert keys to strings for JSON compatibility
+        boosters_dict = {str(k): v for k, v in team_data.boosters.items()}
+        boosters_json = json.dumps(boosters_dict)
+    
     with Session(engine) as session:
         statement = select(Team).where(
             Team.user_osu_id == user_osu_id,
@@ -490,13 +504,15 @@ async def save_team(request: Request, team_data: TeamSaveRequest):
         if existing_team:
             existing_team.player_ids = ",".join(str(pid) for pid in player_ids)
             existing_team.budget_used = total_cost
+            existing_team.boosters = boosters_json
             existing_team.updated_at = datetime.utcnow()
         else:
             new_team = Team(
                 user_osu_id=user_osu_id,
                 tournament=tournament,
                 player_ids=",".join(str(pid) for pid in player_ids),
-                budget_used=total_cost
+                budget_used=total_cost,
+                boosters=boosters_json
             )
             session.add(new_team)
 

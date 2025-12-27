@@ -156,7 +156,7 @@ const AuthButton = () => {
 
   if (!initialized) {
     return (
-      <div className="bg-[#16162a] border-b border-white/10" style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
+      <div className="bg-[#24222A] border-b border-white/10" style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-end gap-3">
           <div style={{ color: '#fff', fontWeight: 500 }}>Loading...</div>
         </div>
@@ -167,7 +167,7 @@ const AuthButton = () => {
   return (
     <>
       {isAuthenticated && userData ? (
-        <div className="bg-[#16162a] border-b border-white/10" style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
+        <div className="bg-[#24222A] border-b border-white/10" style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
           <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-end gap-6">
             <div style={{ color: '#fff', fontWeight: 500, marginRight: '8px' }}>{userData.username}</div>
             <img 

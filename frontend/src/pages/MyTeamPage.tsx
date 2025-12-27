@@ -107,6 +107,7 @@ export default function MyTeamPage() {
       'Taiwan': 'tw',
       'Thailand': 'th',
       'Turkey': 'tr',
+      'Türkiye': 'tr',
       'Ukraine': 'ua',
       'United Kingdom': 'gb',
       'United States': 'us',
@@ -224,18 +225,18 @@ export default function MyTeamPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#1a1a2e] text-white flex items-center justify-center">
+      <div className="min-h-screen bg-[#24222A] text-white flex items-center justify-center">
         <div className="text-xl">Loading players...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] text-white">
+    <div className="min-h-screen bg-[#24222A] text-white">
       <AuthButton />
       <div className="pt-4">
       {/* Header */}
-      <div className="bg-[#16162a] border-b border-white/10">
+      <div className="bg-[#24222A] border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <button
             onClick={() => navigate('/league/owc2025')}
@@ -247,13 +248,23 @@ export default function MyTeamPage() {
             Back
           </button>
           <h1 className="text-2xl font-bold text-white">My Team - OWC 2025</h1>
-          <button
-            onClick={saveTeam}
-            disabled={saving || selectedIds.length !== maxTeamSize || budgetRemaining < 0}
-            className="button-texture bg-[#f39c12] hover:bg-[#e67e22] disabled:bg-[#4a4a5e] disabled:opacity-50 disabled:cursor-not-allowed px-6 py-2 rounded-lg font-semibold text-white"
-          >
-            {saving ? 'Saving...' : 'Save Team'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={saveTeam}
+              disabled={saving || selectedIds.length !== maxTeamSize || budgetRemaining < 0}
+              className="button-texture bg-[#f39c12] hover:bg-[#e67e22] disabled:bg-[#4a4a5e] disabled:opacity-50 disabled:cursor-not-allowed px-6 py-2 rounded-lg font-semibold text-white"
+            >
+              {saving ? 'Saving...' : 'Save Team'}
+            </button>
+            {selectedIds.length === maxTeamSize && (
+              <button
+                onClick={() => navigate('/league/owc2025/my-team/boosters')}
+                className="button-texture bg-[#9b59b6] hover:bg-[#8e44ad] px-6 py-2 rounded-lg font-semibold text-white"
+              >
+                Continue to Pick Boosters
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -424,13 +435,6 @@ export default function MyTeamPage() {
                                   (e.target as HTMLImageElement).src = 'https://osu.ppy.sh/images/layout/avatar-guest.png';
                                 }}
                               />
-                              {isSelected && (
-                                <div className="absolute -top-1 -right-1 bg-[#f39c12] rounded-full w-5 h-5 flex items-center justify-center">
-                                  <svg style={{ width: 10, height: 10 }} fill="white" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                  </svg>
-                                </div>
-                              )}
                             </div>
                             <div className="text-xs font-medium truncate w-full text-center text-white">
                               {player.username}

@@ -27,6 +27,7 @@ import os
 import sqlite3
 import statistics
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -51,6 +52,7 @@ API_BASE = "https://osu.ppy.sh/api/v2"
 
 DEFAULT_DB = "players.db"
 TABLE_NAME = "2025owc"
+USERS_DB = "users.db"
 
 log = logging.getLogger("calculate_pscores")
 
@@ -82,12 +84,160 @@ def fetch_match(match_id: int, token: str) -> dict:
     return r.json()
 
 
-def calculate_match_pscore(match_data: dict) -> Dict[int, Tuple[float, int, int]]:
+def check_booster_activation(booster_id: int, player_data: dict, match_data: dict, all_player_pscores: Dict[int, float]) -> Tuple[bool, int]:
     """
-    Calculate p_score for each player in a match.
+    Check if a booster condition is met for a player in a match.
+    
+    Args:
+        booster_id: ID of the booster (1-12)
+        player_data: Dict with player's performance data in this match
+        match_data: Full match data from API
+        all_player_pscores: Dict mapping user_id to pscore for all players in match
     
     Returns:
-        Dict[user_id, (pscore, maps_played, total_maps_in_match)]
+        Tuple of (is_activated, points_awarded)
+    """
+    user_id = player_data.get("user_id")
+    maps_played = player_data.get("maps_played", 0)
+    scores = player_data.get("scores", [])  # List of score dicts for each map
+    
+    # Booster 1: Hidden - Did not play a single map
+    if booster_id == 1:
+        if maps_played == 0:
+            return (True, 5)
+        return (False, 0)
+    
+    # Booster 2: Captain - Player is on winning team
+    elif booster_id == 2:
+        match_info = match_data.get("match", {})
+        team = player_data.get("team")
+        # Determine winner (this logic may need adjustment based on match structure)
+        # For now, we'll check if player's team won based on final scores
+        events = match_data.get("events", [])
+        team_scores = defaultdict(int)
+        for event in events:
+            game = event.get("game", {})
+            game_scores = game.get("scores", [])
+            for score_data in game_scores:
+                if score_data.get("match", {}).get("team"):
+                    team_scores[score_data["match"]["team"]] += score_data.get("score", 0)
+        
+        if team and team_scores:
+            winning_team = max(team_scores, key=team_scores.get)
+            if team == winning_team:
+                return (True, 5)
+        return (False, -5)
+    
+    # Booster 3: Noob - Lowest p-score in lobby
+    elif booster_id == 3:
+        if not all_player_pscores:
+            return (False, -2)
+        # Players who didn't play have p-score of 1
+        min_pscore = min(all_player_pscores.values())
+        player_pscore = all_player_pscores.get(user_id, 1.0)
+        if player_pscore == min_pscore and player_pscore <= 1.0:
+            return (True, 5)
+        return (False, -2)
+    
+    # Booster 4: 727WYSI - Score or combo contains "727"
+    elif booster_id == 4:
+        for score_data in scores:
+            score_val = score_data.get("score", 0)
+            combo = score_data.get("max_combo", 0)
+            if "727" in str(score_val) or combo == 727:
+                return (True, 7)
+        return (False, 0)
+    
+    # Booster 5: Boshyman741 - Only plays one map and top scores it
+    elif booster_id == 5:
+        if maps_played == 1 and scores:
+            score_data = scores[0]
+            # Check if this was the top score on that map
+            game_data = score_data.get("game_data", {})
+            all_scores_on_map = game_data.get("scores", [])
+            if all_scores_on_map:
+                max_score = max(s.get("score", 0) for s in all_scores_on_map)
+                if score_data.get("score", 0) == max_score:
+                    return (True, 5)
+        return (False, -5)
+    
+    # Booster 6: They Picked DT2 - B rank on any DT map
+    elif booster_id == 6:
+        for score_data in scores:
+            mods = score_data.get("mods", [])
+            rank = score_data.get("rank", "")
+            # Check if DT mod is present
+            has_dt = any(mod in ["DT", "NC"] for mod in mods) if isinstance(mods, list) else "DT" in str(mods)
+            if has_dt and rank == "B":
+                return (True, 6)
+        return (False, -2)
+    
+    # Booster 7: Faker - Highest p-score >= 1.8 in lobby
+    elif booster_id == 7:
+        if not all_player_pscores:
+            return (False, -5)
+        player_pscore = all_player_pscores.get(user_id, 0)
+        max_pscore = max(all_player_pscores.values())
+        if player_pscore == max_pscore and player_pscore >= 1.8:
+            return (True, 5)
+        return (False, -5)
+    
+    # Booster 8: LETS GO GAMBLING - S ranks 3 maps in a row
+    elif booster_id == 8:
+        if len(scores) >= 3:
+            for i in range(len(scores) - 2):
+                if ((scores[i].get("rank") == "S" or scores[i].get("rank") == "SS" or scores[i].get("rank") == "SH") and 
+                    (scores[i+1].get("rank") == "S" or scores[i+1].get("rank") == "SS" or scores[i+1].get("rank") == "SH") and 
+                    (scores[i+2].get("rank") == "S" or scores[i+2].get("rank") == "SS" or scores[i+2].get("rank") == "SH")):
+                    return (True, 10)
+        return (False, -10)
+    
+    # Booster 9: ITS OVER 9000(k) - Score over 900k on any map
+    elif booster_id == 9:
+        for score_data in scores:
+            if score_data.get("score", 0) > 900000:
+                return (True, 5)
+        return (False, -5)
+    
+    # Booster 10: TB HYPE - Plays tiebreaker map
+    elif booster_id == 10:
+        # Check if any map is a tiebreaker (typically marked in beatmap name or mod)
+        for score_data in scores:
+            beatmap = score_data.get("beatmap", {})
+            beatmap_name = beatmap.get("beatmap", {}).get("version", "").lower()
+            if "Destin Victorica" in beatmap_name or "tb" in beatmap_name:
+                return (True, 3)
+        return (False, 0)
+    
+    # Booster 11: OVERWORKING - Played every map in lobby
+    elif booster_id == 11:
+        events = match_data.get("events", [])
+        total_maps = sum(1 for e in events if e.get("game"))
+        if maps_played == total_maps and total_maps > 0:
+            return (True, 5)
+        return (False, -5)
+    
+    # Booster 12: Inconsistent - Lower than 1000 combo on every map
+    elif booster_id == 12:
+        if maps_played == 0:
+            return (False, -5)
+        for score_data in scores:
+            combo = score_data.get("max_combo", 0)
+            if combo >= 1000:
+                return (False, -5)
+        return (True, 5)
+    
+    return (False, 0)
+
+
+def calculate_match_pscore_with_details(match_data: dict) -> Tuple[Dict[int, Tuple[float, int, int]], Dict[int, dict]]:
+    """
+    Calculate p_score for each player in a match and return detailed player data.
+    
+    Returns:
+        Tuple of:
+        - Dict[user_id, (pscore, maps_played, total_maps_in_match)]
+        - Dict[user_id, player_details] with scores, team, etc.
     """
     events = match_data.get("events", [])
     
@@ -96,7 +246,100 @@ def calculate_match_pscore(match_data: dict) -> Dict[int, Tuple[float, int, int]
     
     if not games:
         log.warning("No games found in match")
-        return {}
+        return {}, {}
+    
+    # Calculate N: mean amount of maps played per player in this match
+    player_map_counts = defaultdict(int)
+    player_details = defaultdict(lambda: {
+        "user_id": None,
+        "maps_played": 0,
+        "scores": [],
+        "team": None
+    })
+    
+    for event in games:
+        game = event.get("game", {})
+        scores = game.get("scores", [])
+        
+        for score_data in scores:
+            user_id = score_data.get("user_id")
+            if user_id:
+                player_map_counts[user_id] += 1
+                # Store detailed score data
+                player_details[user_id]["user_id"] = user_id
+                player_details[user_id]["maps_played"] += 1
+                score_copy = dict(score_data)
+                score_copy["game_data"] = game  # Include game context
+                player_details[user_id]["scores"].append(score_copy)
+                if not player_details[user_id]["team"] and score_data.get("match", {}).get("team"):
+                    player_details[user_id]["team"] = score_data["match"]["team"]
+    
+    if not player_map_counts:
+        log.warning("No player scores found in match")
+        return {}, {}
+    
+    # N = mean maps played per player in this match
+    N_mean = statistics.mean(player_map_counts.values()) if player_map_counts else 1
+    
+    # Calculate p_score for each player
+    player_scores = defaultdict(lambda: {"score_ratios": [], "maps_played": 0})
+    
+    for event in games:
+        game = event.get("game", {})
+        scores = game.get("scores", [])
+        
+        # Get all scores for this map to calculate median
+        map_scores = [s.get("score", 0) for s in scores if s.get("score")]
+        
+        if not map_scores:
+            continue
+        
+        median_score = statistics.median(map_scores)
+        
+        # Avoid division by zero
+        if median_score == 0:
+            continue
+        
+        # Calculate S/M for each player on this map
+        for score_data in scores:
+            user_id = score_data.get("user_id")
+            player_score = score_data.get("score", 0)
+            
+            if user_id and player_score:
+                ratio = player_score / median_score
+                player_scores[user_id]["score_ratios"].append(ratio)
+                player_scores[user_id]["maps_played"] += 1
+    
+    # Calculate final p_score for each player
+    results = {}
+    total_maps = len(games)
+    
+    for user_id, data in player_scores.items():
+        score_ratios = data["score_ratios"]
+        n = data["maps_played"]  # maps played by this player
+        
+        if n == 0:
+            continue
+        
+        # pscore = (Σ(Si/Mi) / n) · √(n / N)
+        avg_ratio = sum(score_ratios) / n
+        normalization = math.sqrt(n / N_mean) if N_mean > 0 else 1
+        pscore = avg_ratio * normalization
+        
+        results[user_id] = (pscore, n, total_maps)
+    
+    return results, dict(player_details)
+
+
+def calculate_match_pscore(match_data: dict) -> Dict[int, Tuple[float, int, int]]:
+    """
+    Calculate p_score for each player in a match.
+    
+    Returns:
+        Dict[user_id, (pscore, maps_played, total_maps_in_match)]
+    """
+    results, _ = calculate_match_pscore_with_details(match_data)
+    return results
     
     # Calculate N: mean amount of maps played per player in this match
     player_map_counts = defaultdict(int)
@@ -269,6 +512,125 @@ def update_player_pscores(conn: sqlite3.Connection, match_pscores: List[Dict[int
     log.info(f"Updated {updated} players with p_scores")
 
 
+def update_user_scores_with_boosters(match_data_list: List[Tuple[int, dict]], match_pscores_list: List[dict], match_details_list: List[dict]):
+    """
+    Calculate and update user fantasy scores with booster bonuses applied.
+    This only updates booster points - base p-score points are handled by update_scores.py
+    
+    Args:
+        match_data_list: List of (match_id, match_data) tuples
+        match_pscores_list: List of match p-score results
+        match_details_list: List of match player details
+    """
+    users_db_path = Path(__file__).parent.parent / USERS_DB
+    if not users_db_path.exists():
+        log.warning(f"Users database not found at {users_db_path}, skipping user score updates")
+        return
+    
+    conn = sqlite3.connect(users_db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    try:
+        # Get all teams with their boosters
+        cursor.execute("SELECT user_osu_id, player_ids, boosters FROM teams WHERE tournament = 'owc2025'")
+        teams = cursor.fetchall()
+        
+        for team in teams:
+            user_osu_id = team["user_osu_id"]
+            player_ids_str = team["player_ids"]
+            boosters_json = team["boosters"]
+            
+            if not player_ids_str:
+                continue
+            
+            player_ids = [int(pid) for pid in player_ids_str.split(",") if pid]
+            
+            # Parse boosters
+            import json
+            try:
+                boosters = json.loads(boosters_json) if boosters_json else {}
+            except json.JSONDecodeError:
+                boosters = {}
+            
+            # Only calculate booster points
+            total_booster_points = 0
+            
+            # Process each match
+            for (match_id, match_data), match_pscores, match_player_details in zip(match_data_list, match_pscores_list, match_details_list):
+                
+                # For each player in the team
+                for player_db_id in player_ids:
+                    # Check if player has a booster assigned
+                    booster_id = boosters.get(str(player_db_id))
+                    if not booster_id:
+                        continue
+                    
+                    # Find the osu user_id for this player
+                    player_user_id = None
+                    player_conn = sqlite3.connect(DEFAULT_DB)
+                    player_cursor = player_conn.cursor()
+                    player_cursor.execute(f'SELECT profile_url FROM "{TABLE_NAME}" WHERE id = ?', (player_db_id,))
+                    row = player_cursor.fetchone()
+                    if row:
+                        profile_url = row[0]
+                        # Extract user_id from profile URL
+                        if "/users/" in profile_url:
+                            player_user_id = int(profile_url.split("/users/")[1].split("/")[0])
+                    player_conn.close()
+                    
+                    if not player_user_id:
+                        continue
+                    
+                    # Get player details for booster checks
+                    player_data = match_player_details.get(player_user_id, {})
+                    if not player_data:
+                        # Player didn't play in this match
+                        player_data = {
+                            "user_id": player_user_id,
+                            "maps_played": 0,
+                            "scores": [],
+                            "team": None
+                        }
+                    
+                    # Check booster activation
+                    activated, points = check_booster_activation(
+                        booster_id,
+                        player_data,
+                        match_data,
+                        {uid: pscore for uid, (pscore, _, _) in match_pscores.items()}
+                    )
+                    
+                    if activated:
+                        log.info(f"  Booster {booster_id} activated for player {player_db_id} in match {match_id}: +{points} points")
+                    else:
+                        log.info(f"  Booster {booster_id} NOT activated for player {player_db_id} in match {match_id}: {points} points")
+                    
+                    total_booster_points += points
+            
+            # Get current user score and add booster points
+            cursor.execute("SELECT score FROM users WHERE osu_id = ?", (user_osu_id,))
+            result = cursor.fetchone()
+            current_score = result["score"] if result else 0
+            new_score = current_score + total_booster_points
+            
+            # Update user's score (only adding booster points to existing score)
+            cursor.execute(
+                "UPDATE users SET score = ?, updated_at = ? WHERE osu_id = ?",
+                (int(new_score), datetime.utcnow(), user_osu_id)
+            )
+            log.info(f"Updated user {user_osu_id} with booster points: +{total_booster_points} (new total: {int(new_score)})")
+        
+        conn.commit()
+        log.info(f"Updated scores for {len(teams)} users with booster bonuses")
+        
+    except Exception as e:
+        log.error(f"Error updating user scores: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Calculate p_scores for OWC 2025 players")
     parser.add_argument("--matches", nargs="+", type=int, help="Match IDs to process")
@@ -312,15 +674,19 @@ def main():
     
     # Fetch and process each match
     all_match_pscores = []
+    all_match_data = []
+    all_match_details = []
     
     for match_id in match_ids:
         log.info(f"Fetching match {match_id}")
         try:
             match_data = fetch_match(match_id, token)
-            match_pscores = calculate_match_pscore(match_data)
+            match_pscores, match_player_details = calculate_match_pscore_with_details(match_data)
             
             if match_pscores:
                 all_match_pscores.append(match_pscores)
+                all_match_data.append((match_id, match_data))
+                all_match_details.append(match_player_details)
                 log.info(f"Calculated p_scores for {len(match_pscores)} players in match {match_id}")
             else:
                 log.warning(f"No p_scores calculated for match {match_id}")
@@ -332,6 +698,10 @@ def main():
     # Update database with aggregated p_scores
     if all_match_pscores:
         update_player_pscores(conn, all_match_pscores)
+        
+        # Update user fantasy scores with booster bonuses
+        log.info("Calculating user scores with booster bonuses...")
+        update_user_scores_with_boosters(all_match_data, all_match_pscores, all_match_details)
     else:
         log.warning("No p_scores calculated from any matches")
     
