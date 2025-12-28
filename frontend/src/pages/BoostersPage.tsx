@@ -31,13 +31,6 @@ const API_BASE = 'http://localhost:8000';
 // Define all available boosters based on the provided document
 const BOOSTERS: Booster[] = [
   {
-    id: 1,
-    name: 'Hidden',
-    activation: 'Blud did not get to play a single map :sob:',
-    points: '+5 points if success, no penalty',
-    description: 'Activate if player doesn\'t play any maps in the lobby'
-  },
-  {
     id: 2,
     name: 'Captain',
     activation: 'The chosen player has led his team to victory',
@@ -462,7 +455,6 @@ export default function BoostersPage() {
                           <div className={`w-full aspect-square rounded flex items-center justify-center text-base ${
                             isAssignedToCurrent ? 'bg-white/20' : 'bg-white/5'
                           }`}>
-                            {booster.id === 1 && '👻'}
                             {booster.id === 2 && '👑'}
                             {booster.id === 3 && '🆕'}
                             {booster.id === 4 && '🔢'}
