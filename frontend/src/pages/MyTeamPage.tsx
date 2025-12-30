@@ -316,36 +316,37 @@ export default function MyTeamPage() {
                   Click on players to add them to your team
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="flex gap-2 flex-wrap">
                   {selectedPlayers.map(player => (
                     <div
                       key={player.id}
-                      className="flex items-center gap-3 bg-[#1a1a2e] rounded-lg p-3 group"
+                      className="flex flex-col items-center bg-[#1a1a2e] rounded-lg p-2 group relative flex-1 min-w-0 border-2 border-white/10"
                     >
                       <button
                         type="button"
                         onClick={() => togglePlayer(player.id)}
-                        className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#f39c12] focus:ring-offset-2 focus:ring-offset-[#1a1a2e]"
+                        className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#f39c12] focus:ring-offset-2 focus:ring-offset-[#1a1a2e] mb-2"
                         title={`Remove ${player.username}`}
                       >
                         <img
                           src={player.avatar_url || `https://a.ppy.sh/${player.id}`}
-                          alt={player.username}                          className="rounded-full object-cover"
-                          style={{ width: 60, height: 60 }}
+                          alt={player.username}
+                          className="rounded-full object-cover"
+                          style={{ width: 48, height: 48 }}
                           onError={(e) => {
                             (e.target as HTMLImageElement).src = 'https://osu.ppy.sh/images/layout/avatar-guest.png';
                           }}
                         />
                       </button>
                       
-                      <div className="flex-1 min-w-0" style={{ marginLeft: '8px' }}>
-                        <div className="font-medium truncate text-white">{player.username}</div>
-                        <div className="text-sm text-white">{player.country}</div>
-                        <div className="text-[#f39c12] font-bold shrink-0">${player.cost}</div>
+                      <div className="flex-1 min-w-0 text-center w-full">
+                        <div className="font-medium truncate text-white text-xs">{player.username}</div>
+                        <div className="text-xs text-white/70">{player.country}</div>
+                        <div className="text-[#f39c12] font-bold text-xs mt-1">${player.cost}</div>
                       </div>
                       <button
                         onClick={() => togglePlayer(player.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300 shrink-0"
+                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

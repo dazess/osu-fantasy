@@ -47,6 +47,11 @@ CLIENT_SECRET = os.getenv("OSU_CLIENT_SECRET1")
 if not CLIENT_ID or not CLIENT_SECRET:
     raise SystemExit("Error: OSU_CLIENT_ID1 and OSU_CLIENT_SECRET1 required in backend/.env")
 
+CLIENT_ID = os.getenv("OSU_CLIENT_ID1")
+CLIENT_SECRET = os.getenv("OSU_CLIENT_SECRET1")
+if not CLIENT_ID or not CLIENT_SECRET:
+    raise SystemExit("Error: OSU_CLIENT_ID1 and OSU_CLIENT_SECRET1 required in backend/.env")
+
 TOKEN_URL = "https://osu.ppy.sh/oauth/token"
 API_BASE = "https://osu.ppy.sh/api/v2"
 
@@ -74,14 +79,71 @@ def get_app_token(client_id: str, client_secret: str) -> str:
 
 
 def fetch_match(match_id: int, token: str) -> dict:
-    """Fetch match data from osu! API"""
+    """Fetch match data from osu! API with proper pagination using 'before' parameter"""
     url = f"{API_BASE}/matches/{match_id}"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    
+    # Fetch first page with high limit
+    params = {"limit": 100}
+    
     with httpx.Client(timeout=30.0) as client:
-        r = client.get(url, headers=headers)
+        r = client.get(url, headers=headers, params=params)
     if r.status_code != 200:
         raise RuntimeError(f"Failed to fetch match {match_id}: {r.status_code} {r.text}")
-    return r.json()
+    
+    match_data = r.json()
+    all_events = match_data.get("events", [])
+    
+    log.info(f"  Page 1: {len(all_events)} events")
+    
+    # Continue fetching if we got 100 events (indicates more pages)
+    page = 1
+    while len(all_events) > 0 and len(all_events) % 100 == 0 and page < 20:
+        # Use the earliest event ID as the 'before' parameter for next page
+        earliest_event_id = min(e.get("id", float('inf')) for e in all_events)
+        
+        page += 1
+        log.info(f"  Fetching page {page} (before event {earliest_event_id})...")
+        
+        params = {"limit": 100, "before": earliest_event_id}
+        
+        with httpx.Client(timeout=30.0) as client:
+            r = client.get(url, headers=headers, params=params)
+        
+        if r.status_code != 200:
+            log.warning(f"Failed to fetch page {page}: {r.status_code}")
+            break
+        
+        page_data = r.json()
+        page_events = page_data.get("events", [])
+        
+        log.info(f"  Page {page}: {len(page_events)} events")
+        
+        if not page_events:
+            log.info("  No more events")
+            break
+        
+        # Check for duplicates (event IDs we already have)
+        new_events = [e for e in page_events if e.get("id") not in {ev.get("id") for ev in all_events}]
+        
+        if not new_events:
+            log.info("  No new events (all duplicates), stopping")
+            break
+        
+        all_events.extend(new_events)
+        
+        # If we got fewer than 100, we're at the end
+        if len(page_events) < 100:
+            break
+    
+    # Update match_data with all events
+    match_data["events"] = all_events
+    
+    # Count total events and games
+    total_games = sum(1 for e in all_events if e.get("game"))
+    log.info(f"  Total: {len(all_events)} events ({total_games} games) across {page} page(s)")
+    
+    return match_data
 
 
 def check_booster_activation(booster_id: int, player_data: dict, match_data: dict, all_player_pscores: Dict[int, float]) -> Tuple[bool, int]:
@@ -101,29 +163,37 @@ def check_booster_activation(booster_id: int, player_data: dict, match_data: dic
     maps_played = player_data.get("maps_played", 0)
     scores = player_data.get("scores", [])  # List of score dicts for each map
     
-    # Booster 1: Hidden - Did not play a single map
-    if booster_id == 1:
-        if maps_played == 0:
-            return (True, 5)
-        return (False, 0)
-    
     # Booster 2: Captain - Player is on winning team
-    elif booster_id == 2:
+    if booster_id == 2:
         match_info = match_data.get("match", {})
         team = player_data.get("team")
-        # Determine winner (this logic may need adjustment based on match structure)
-        # For now, we'll check if player's team won based on final scores
+        # Determine winner by counting map wins (not total score)
         events = match_data.get("events", [])
-        team_scores = defaultdict(int)
+        team_map_wins = defaultdict(int)
+        
         for event in events:
             game = event.get("game", {})
+            if not game:
+                continue
+            
             game_scores = game.get("scores", [])
+            if not game_scores:
+                continue
+            
+            # Find which team won this map (highest total score on the map)
+            team_scores_per_map = defaultdict(int)
             for score_data in game_scores:
-                if score_data.get("match", {}).get("team"):
-                    team_scores[score_data["match"]["team"]] += score_data.get("score", 0)
+                player_team = score_data.get("match", {}).get("team")
+                if player_team:
+                    team_scores_per_map[player_team] += score_data.get("score", 0)
+            
+            # Determine map winner
+            if team_scores_per_map:
+                map_winner = max(team_scores_per_map, key=team_scores_per_map.get)
+                team_map_wins[map_winner] += 1
         
-        if team and team_scores:
-            winning_team = max(team_scores, key=team_scores.get)
+        if team and team_map_wins:
+            winning_team = max(team_map_wins, key=team_map_wins.get)
             if team == winning_team:
                 return (True, 5)
         return (False, -5)
@@ -168,7 +238,7 @@ def check_booster_activation(booster_id: int, player_data: dict, match_data: dic
             rank = score_data.get("rank", "")
             # Check if DT mod is present
             has_dt = any(mod in ["DT", "NC"] for mod in mods) if isinstance(mods, list) else "DT" in str(mods)
-            if has_dt and rank == "B":
+            if has_dt and (rank == "B" or rank == "C" or rank == "D"):
                 return (True, 6)
         return (False, -2)
     
@@ -203,9 +273,17 @@ def check_booster_activation(booster_id: int, player_data: dict, match_data: dic
     elif booster_id == 10:
         # Check if any map is a tiebreaker (typically marked in beatmap name or mod)
         for score_data in scores:
+            # Check beatmap from score_data
             beatmap = score_data.get("beatmap", {})
-            beatmap_name = beatmap.get("beatmap", {}).get("version", "").lower()
-            if "Destin Victorica" in beatmap_name or "tb" in beatmap_name:
+            difficulty = beatmap.get("version", "").lower()
+            
+            # Also check from game_data if beatmap not in score_data
+            if not difficulty:
+                game_data = score_data.get("game_data", {})
+                beatmap = game_data.get("beatmap", {})
+                difficulty = beatmap.get("version", "").lower()
+            
+            if "destin victorica" in difficulty or "nostalgia" in difficulty or "tiebreaker" in difficulty or "tb" in difficulty:
                 return (True, 3)
         return (False, 0)
     
@@ -284,9 +362,28 @@ def calculate_match_pscore_with_details(match_data: dict) -> Tuple[Dict[int, Tup
     # Calculate p_score for each player
     player_scores = defaultdict(lambda: {"score_ratios": [], "maps_played": 0})
     
+    map_num = 0
     for event in games:
         game = event.get("game", {})
         scores = game.get("scores", [])
+        
+        # Debug: Show map name
+        map_num += 1
+        beatmap = game.get("beatmap", {})
+        map_id = beatmap.get("id", "Unknown")
+        
+        # Get full map name: Artist - Title [Difficulty]
+        beatmapset = beatmap.get("beatmapset", {})
+        artist = beatmapset.get("artist", "")
+        title = beatmapset.get("title", "")
+        difficulty = beatmap.get("version", "Unknown")
+        
+        if artist and title:
+            full_map_name = f"{artist} - {title} [{difficulty}]"
+        else:
+            full_map_name = f"[{difficulty}]"
+        
+        log.info(f"    Map {map_num}/{len(games)}: {full_map_name} (ID: {map_id})")
         
         # Get all scores for this map to calculate median
         map_scores = [s.get("score", 0) for s in scores if s.get("score")]
@@ -499,6 +596,11 @@ def update_player_pscores(conn: sqlite3.Connection, match_pscores: List[Dict[int
         
         weighted_pscore = sum(score * weight for score, weight in pscores) / total_weight
         
+        # Get player username for logging
+        cursor.execute(f'SELECT username FROM "{TABLE_NAME}" WHERE id = ?', (db_id,))
+        username_row = cursor.fetchone()
+        username = username_row["username"] if username_row else f"ID {db_id}"
+        
         # Update database
         cursor.execute(
             f'UPDATE "{TABLE_NAME}" SET p_score = ?, matches_played = ?, total_maps_played = ? WHERE id = ?',
@@ -506,7 +608,7 @@ def update_player_pscores(conn: sqlite3.Connection, match_pscores: List[Dict[int
         )
         updated += 1
         
-        log.info(f"Updated player ID {db_id}: p_score={weighted_pscore:.4f}, matches={data['matches']}, maps={data['total_maps']}")
+        log.info(f"Updated player {username}: p_score={weighted_pscore:.4f}, matches={data['matches']}, maps={data['total_maps']}")
     
     conn.commit()
     log.info(f"Updated {updated} players with p_scores")
@@ -566,14 +668,16 @@ def update_user_scores_with_boosters(match_data_list: List[Tuple[int, dict]], ma
                     if not booster_id:
                         continue
                     
-                    # Find the osu user_id for this player
+                    # Find the osu user_id and username for this player
                     player_user_id = None
+                    player_username = f"ID {player_db_id}"
                     player_conn = sqlite3.connect(DEFAULT_DB)
                     player_cursor = player_conn.cursor()
-                    player_cursor.execute(f'SELECT profile_url FROM "{TABLE_NAME}" WHERE id = ?', (player_db_id,))
+                    player_cursor.execute(f'SELECT profile_url, username FROM "{TABLE_NAME}" WHERE id = ?', (player_db_id,))
                     row = player_cursor.fetchone()
                     if row:
                         profile_url = row[0]
+                        player_username = row[1] if len(row) > 1 else f"ID {player_db_id}"
                         # Extract user_id from profile URL
                         if "/users/" in profile_url:
                             player_user_id = int(profile_url.split("/users/")[1].split("/")[0])
@@ -593,6 +697,11 @@ def update_user_scores_with_boosters(match_data_list: List[Tuple[int, dict]], ma
                             "team": None
                         }
                     
+                    # Skip booster check if player didn't play in this match
+                    if player_data.get("maps_played", 0) == 0:
+                        log.info(f"  Player {player_username} did not play in match {match_id}, skipping booster check")
+                        continue
+                    
                     # Check booster activation
                     activated, points = check_booster_activation(
                         booster_id,
@@ -602,9 +711,9 @@ def update_user_scores_with_boosters(match_data_list: List[Tuple[int, dict]], ma
                     )
                     
                     if activated:
-                        log.info(f"  Booster {booster_id} activated for player {player_db_id} in match {match_id}: +{points} points")
+                        log.info(f"  Booster {booster_id} activated for player {player_username} in match {match_id}: +{points} points")
                     else:
-                        log.info(f"  Booster {booster_id} NOT activated for player {player_db_id} in match {match_id}: {points} points")
+                        log.info(f"  Booster {booster_id} NOT activated for player {player_username} in match {match_id}: {points} points")
                     
                     total_booster_points += points
             
@@ -682,6 +791,11 @@ def main():
         try:
             match_data = fetch_match(match_id, token)
             match_pscores, match_player_details = calculate_match_pscore_with_details(match_data)
+            
+            # Debug: Show total maps in lobby
+            events = match_data.get("events", [])
+            total_maps_in_lobby = sum(1 for e in events if e.get("game"))
+            log.info(f"[DEBUG] Match {match_id}: Total maps played in lobby = {total_maps_in_lobby}")
             
             if match_pscores:
                 all_match_pscores.append(match_pscores)
